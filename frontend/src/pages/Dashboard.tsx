@@ -213,7 +213,7 @@ export default function Dashboard() {
           value={commitMsg}
           onChange={(e) => setCommitMsg(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleCommit()}
-          placeholder="Commit message…"
+          placeholder="Describe your changes…"
           className="flex-1 rounded-xl border border-border bg-surface-2 px-4 py-2.5 text-sm outline-none transition-colors focus:border-accent"
         />
         <Button variant="secondary" onClick={handleAiMessage} loading={aiLoading}>
