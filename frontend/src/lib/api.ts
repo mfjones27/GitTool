@@ -49,6 +49,14 @@ export interface Settings {
   recent_repos: string[];
 }
 
+export interface IgnorePlan {
+  patterns: string[];
+  languages: string[];
+  gitignore_updated: boolean;
+  tracked_matches: string[];
+  untracked: string[];
+}
+
 export const api = {
   health: () => get<{ status: string; git_installed: boolean }>('/health'),
 
@@ -73,7 +81,11 @@ export const api = {
 
   commit: (message: string) => post<{ sha: string }>('/repo/commit', { message }),
   push: (set_upstream = false) => post('/repo/push', { set_upstream }),
-  pushEverything: () => post<{ sha: string; message: string }>('/repo/push-everything'),
+  pushEverything: () =>
+    post<{ sha: string; message: string; ignore: IgnorePlan }>('/repo/push-everything'),
+
+  ignorePreview: () => get<IgnorePlan>('/repo/ignore/preview'),
+  ignoreApply: () => post<IgnorePlan>('/repo/ignore/apply'),
 
   diff: (staged = false) => get<{ diff: string }>(`/repo/diff?staged=${staged}`),
   aiCommitMessage: () => post<{ message: string }>('/ai/commit-message'),

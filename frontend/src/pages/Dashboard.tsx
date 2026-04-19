@@ -1,22 +1,54 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { GitBranch, ArrowUpCircle, ArrowDownCircle, Clock, FileCode2, Zap, Rocket, RefreshCw, Activity } from 'lucide-react';
+import { GitBranch, ArrowUpCircle, ArrowDownCircle, Clock, FileCode2, Zap, Rocket, RefreshCw, Activity, ShieldCheck } from 'lucide-react';
 import { GlassCard } from '@/components/GlassCard';
 import { Button } from '@/components/Button';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Skeleton } from '@/components/Skeleton';
 import { useAppStore } from '@/stores/app-store';
-import { api } from '@/lib/api';
+import { api, type IgnorePlan } from '@/lib/api';
 
 export default function Dashboard() {
   const { repoStatus, repoPath, fetchStatus, addToast, loading } = useAppStore();
   const [pushing, setPushing] = useState(false);
   const [commitMsg, setCommitMsg] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
+  const [ignorePlan, setIgnorePlan] = useState<IgnorePlan | null>(null);
+  const [ignoreLoading, setIgnoreLoading] = useState(false);
+
+  const refreshIgnore = useCallback(async () => {
+    try {
+      const plan = await api.ignorePreview();
+      setIgnorePlan(plan);
+    } catch {
+      /* no-op */
+    }
+  }, []);
 
   useEffect(() => {
-    if (repoPath) fetchStatus();
-  }, [repoPath, fetchStatus]);
+    if (repoPath) {
+      fetchStatus();
+      refreshIgnore();
+    }
+  }, [repoPath, fetchStatus, refreshIgnore]);
+
+  const handleApplyIgnore = async () => {
+    setIgnoreLoading(true);
+    try {
+      const plan = await api.ignoreApply();
+      setIgnorePlan(plan);
+      if (plan.untracked.length) {
+        addToast(`Untracked ${plan.untracked.length} file(s) from index`, 'success');
+      } else {
+        addToast('Already clean — nothing to untrack', 'info');
+      }
+      fetchStatus();
+    } catch (e: unknown) {
+      addToast(e instanceof Error ? e.message : 'Smart Ignore failed', 'error');
+    } finally {
+      setIgnoreLoading(false);
+    }
+  };
 
   const handleAiMessage = async () => {
     setAiLoading(true);
@@ -47,7 +79,10 @@ export default function Dashboard() {
     setPushing(true);
     try {
       const res = await api.pushEverything();
-      addToast(`Pushed ${res.sha.slice(0, 8)} — ${res.message}`, 'success');
+      setIgnorePlan(res.ignore);
+      const untracked = res.ignore?.untracked.length ?? 0;
+      const suffix = untracked ? ` (excluded ${untracked} file${untracked === 1 ? '' : 's'})` : '';
+      addToast(`Pushed ${res.sha.slice(0, 8)} — ${res.message}${suffix}`, 'success');
       fetchStatus();
     } catch (e: unknown) {
       addToast(e instanceof Error ? e.message : 'Push failed', 'error');
@@ -179,6 +214,61 @@ export default function Dashboard() {
           <Zap className="h-4 w-4" /> AI Message
         </Button>
         <Button onClick={handleCommit}>Commit</Button>
+      </GlassCard>
+
+      {/* Smart Ignore panel */}
+      <GlassCard className="border-accent/20">
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4 text-accent" />
+            <h3 className="text-sm font-semibold text-accent">Smart Ignore</h3>
+            {ignorePlan?.languages.length ? (
+              <StatusBadge status="ready" label={ignorePlan.languages.join(' + ')} />
+            ) : null}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" onClick={refreshIgnore}>
+              <RefreshCw className="h-4 w-4" /> Scan
+            </Button>
+            <Button onClick={handleApplyIgnore} loading={ignoreLoading}>
+              Apply
+            </Button>
+          </div>
+        </div>
+        <p className="mb-3 text-xs text-text-muted">
+          Auto-manages <span className="text-accent">.gitignore</span> and untracks files that shouldn't be pushed
+          (builds, <code>dist/</code>, <code>node_modules/</code>, <code>.venv/</code>, secrets, binaries). Runs
+          automatically on <span className="text-accent">Push Everything</span>.
+        </p>
+        <div className="grid grid-cols-3 gap-4 text-sm">
+          <div className="rounded-xl bg-surface-2 p-3">
+            <p className="text-text-muted">Managed patterns</p>
+            <p className="mt-1 text-lg font-bold text-accent">{ignorePlan?.patterns.length ?? 0}</p>
+          </div>
+          <div className="rounded-xl bg-surface-2 p-3">
+            <p className="text-text-muted">Should be excluded</p>
+            <p className="mt-1 text-lg font-bold text-warning">{ignorePlan?.tracked_matches.length ?? 0}</p>
+          </div>
+          <div className="rounded-xl bg-surface-2 p-3">
+            <p className="text-text-muted">.gitignore</p>
+            <p className="mt-1 text-lg font-bold text-success">
+              {ignorePlan?.gitignore_updated ? 'Updated' : 'In sync'}
+            </p>
+          </div>
+        </div>
+        {ignorePlan?.tracked_matches.length ? (
+          <div className="mt-3 max-h-40 overflow-y-auto rounded-xl bg-surface-2 p-3">
+            <p className="mb-1 text-xs text-text-muted">Will be untracked on Apply:</p>
+            <ul className="space-y-0.5 text-xs font-mono">
+              {ignorePlan.tracked_matches.slice(0, 50).map((f) => (
+                <li key={f} className="truncate text-warning">{f}</li>
+              ))}
+              {ignorePlan.tracked_matches.length > 50 ? (
+                <li className="text-text-muted">…and {ignorePlan.tracked_matches.length - 50} more</li>
+              ) : null}
+            </ul>
+          </div>
+        ) : null}
       </GlassCard>
 
       {/* AI insights panel */}

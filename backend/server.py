@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app.git import operations as git_ops
+from app.git import ignore_manager
 from app.ai.commit_generator import generate_commit_message
 from app.config.settings import AppSettings
 from app.utils import validators
@@ -312,12 +313,35 @@ def update_settings(req: SettingsUpdate):
     return {"ok": True}
 
 
+# ── smart ignore ────────────────────────────────────────────────────
+
+@app.get("/repo/ignore/preview")
+def ignore_preview():
+    path = _require_repo()
+    try:
+        plan = ignore_manager.preview(path)
+        return asdict(plan)
+    except Exception as exc:
+        raise HTTPException(500, str(exc))
+
+
+@app.post("/repo/ignore/apply")
+def ignore_apply():
+    path = _require_repo()
+    try:
+        plan = ignore_manager.apply(path)
+        return asdict(plan)
+    except Exception as exc:
+        raise HTTPException(500, str(exc))
+
+
 # ── push everything (convenience) ──────────────────────────────────
 
 @app.post("/repo/push-everything")
 def push_everything():
     path = _require_repo()
     try:
+        ignore_plan = ignore_manager.apply(path)
         git_ops.stage_all(path)
         settings = AppSettings.load()
         diff = git_ops.diff_text(path, staged=True)
@@ -327,7 +351,12 @@ def push_everything():
             msg = "Update files"
         sha = git_ops.commit(path, msg)
         output = git_ops.push(path, set_upstream=True)
-        return {"sha": sha, "push_output": output, "message": msg}
+        return {
+            "sha": sha,
+            "push_output": output,
+            "message": msg,
+            "ignore": asdict(ignore_plan),
+        }
     except Exception as exc:
         raise HTTPException(500, str(exc))
 
