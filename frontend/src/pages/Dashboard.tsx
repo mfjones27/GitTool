@@ -5,6 +5,7 @@ import { GlassCard } from '@/components/GlassCard';
 import { Button } from '@/components/Button';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Skeleton } from '@/components/Skeleton';
+import { Modal } from '@/components/Modal';
 import { useAppStore } from '@/stores/app-store';
 import { api, type IgnorePlan } from '@/lib/api';
 
@@ -15,6 +16,7 @@ export default function Dashboard() {
   const [aiLoading, setAiLoading] = useState(false);
   const [ignorePlan, setIgnorePlan] = useState<IgnorePlan | null>(null);
   const [ignoreLoading, setIgnoreLoading] = useState(false);
+  const [commitModalOpen, setCommitModalOpen] = useState(false);
 
   const refreshIgnore = useCallback(async () => {
     try {
@@ -164,7 +166,11 @@ export default function Dashboard() {
             <p className="mt-3 text-xl font-bold">{totalChanged} files</p>
           </GlassCard>
 
-          <GlassCard>
+          <GlassCard
+            onClick={() => s?.last_commit && setCommitModalOpen(true)}
+            className={s?.last_commit ? 'cursor-pointer' : ''}
+            title={s?.last_commit ? 'Click to view full message' : undefined}
+          >
             <div className="flex items-center gap-3 text-success">
               <Clock className="h-5 w-5" />
               <span className="text-xs font-medium uppercase tracking-wide text-text-muted">Last Commit</span>
@@ -295,6 +301,16 @@ export default function Dashboard() {
           </div>
         </div>
       </GlassCard>
+
+      <Modal
+        open={commitModalOpen}
+        onClose={() => setCommitModalOpen(false)}
+        title="Last Commit Message"
+      >
+        <pre className="whitespace-pre-wrap break-words font-mono text-sm text-text">
+          {s?.last_commit}
+        </pre>
+      </Modal>
     </div>
   );
 }
