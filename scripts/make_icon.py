@@ -4,11 +4,13 @@ from pathlib import Path
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
-SRC = Path(
-    r"C:\Users\Mauri\.cursor\projects\c-Users-Mauri-Documents-Python-Projects-GitTool"
-    r"\assets\icon_source.png"
-)
+SRC = ROOT / "assets" / "icon_source.png"
 OUT = ROOT / "assets" / "icon.ico"
+
+if not SRC.exists():
+    raise FileNotFoundError(
+        f"Source icon not found at {SRC}. Place a square PNG there before running this script."
+    )
 
 img = Image.open(SRC).convert("RGBA")
 
