@@ -187,31 +187,47 @@ def _update_gitignore(repo: Path, patterns: list[str]) -> bool:
     return True
 
 
+def _split_nul(data: bytes) -> list[bytes]:
+    """Split NUL-separated git output, dropping empty trailing entry."""
+    return [chunk for chunk in data.split(b"\x00") if chunk]
+
+
+def _decode_path(raw: bytes) -> str:
+    """Decode a raw git pathname, preserving any control bytes (e.g. CR)."""
+    return raw.decode("utf-8", errors="surrogateescape")
+
+
 def _tracked_matches(repo: Path) -> list[str]:
-    """Return tracked files that the current .gitignore would ignore."""
+    """Return tracked files that the current .gitignore would ignore.
+
+    Uses ``-z`` (NUL-separated, raw bytes) for both reads and writes so that
+    pathnames containing control characters (e.g. a stray CR in a Windows
+    ``__pycache__`` entry) survive without C-style quoting.
+    """
     ls = subprocess.run(
-        ["git", "ls-files"],
+        ["git", "ls-files", "-z"],
         cwd=str(repo),
         capture_output=True,
-        text=True,
         timeout=30,
     )
-    if ls.returncode != 0 or not ls.stdout.strip():
+    if ls.returncode != 0 or not ls.stdout:
         return []
 
-    tracked = [line for line in ls.stdout.splitlines() if line]
+    tracked = _split_nul(ls.stdout)
+    if not tracked:
+        return []
+
     proc = subprocess.run(
-        ["git", "check-ignore", "--no-index", "--stdin"],
+        ["git", "check-ignore", "--no-index", "-z", "--stdin"],
         cwd=str(repo),
-        input="\n".join(tracked),
+        input=b"\x00".join(tracked),
         capture_output=True,
-        text=True,
         timeout=30,
     )
     # 0 = some ignored, 1 = none ignored, >1 = error
     if proc.returncode not in (0, 1):
         return []
-    return [line for line in proc.stdout.splitlines() if line]
+    return [_decode_path(p) for p in _split_nul(proc.stdout)]
 
 
 def preview(path: str) -> IgnorePlan:
@@ -252,7 +268,9 @@ def apply(path: str) -> IgnorePlan:
             untracked = matches
             log.info("Untracked %d files via smart ignore", len(matches))
         else:
-            log.warning("git rm --cached failed: %s", proc.stderr.strip())
+            err = (proc.stderr or proc.stdout or "").strip() or "unknown error"
+            log.warning("git rm --cached failed: %s", err)
+            raise RuntimeError(f"git rm --cached failed: {err}")
 
     return IgnorePlan(
         patterns=patterns,
