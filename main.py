@@ -80,12 +80,16 @@ def _patch_fastapi_static():
 
     dist = _resolve_frontend()
 
+    dist_root = Path(dist).resolve()
+
     @app.get("/{full_path:path}")
     async def _spa_fallback(full_path: str):
-        file = Path(dist) / full_path
-        if file.is_file():
+        # Stay inside the built frontend: encoded "../" or absolute paths would
+        # otherwise let a request read any file on the machine.
+        file = (dist_root / full_path).resolve()
+        if full_path and file.is_relative_to(dist_root) and file.is_file():
             return FileResponse(str(file))
-        return FileResponse(str(Path(dist) / "index.html"))
+        return FileResponse(str(dist_root / "index.html"))
 
     app.mount(
         "/assets",

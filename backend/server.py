@@ -5,6 +5,7 @@ from dataclasses import asdict
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel
 
 from app.git import operations as git_ops
@@ -39,12 +40,24 @@ async def lifespan(app: FastAPI):
 # ── FastAPI instance ────────────────────────────────────────────────
 
 app = FastAPI(title="GitTool API", lifespan=lifespan)
+
+# This API can push, delete branches and rewrite remotes, and it listens on localhost.
+# Only the GitTool UI may call it: its own origin (packaged app) and the Vite dev server.
+# With "*" any website open in your browser could drive it.
+ALLOWED_ORIGINS = [
+    "http://127.0.0.1:9876",
+    "http://localhost:9876",
+    "http://127.0.0.1:5173",
+    "http://localhost:5173",
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Reject requests whose Host isn't localhost (blocks DNS-rebinding attacks).
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"])
 
 
 # ── request / response models ──────────────────────────────────────
